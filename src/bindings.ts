@@ -14,4 +14,9 @@ export function greet(name: string) {
     return invoke()<string>("greet", { name })
 }
 
+export function fire(url: string, method: string, headers: { [key: string]: string }, parallelRequests: number) {
+    return invoke()<ResponseMetrics>("fire", { url,method,headers,parallelRequests })
+}
 
+export type ResponseStats = { status: number; content_length: number; content_type: string; headers: { [key: string]: string }; duration: number }
+export type ResponseMetrics = { duration: number[]; mean_duration: number; median_duration: number; min_duration: number; max_duration: number; duration_p_10: number; duration_p_25: number; duration_p_50: number; duration_p_75: number; duration_p_90: number; duration_p_95: number; duration_p_99: number; total_redirects: number; total_duration: number; total_requests: number; total_bytes: number; total_errors: number; responses: ResponseStats[] }

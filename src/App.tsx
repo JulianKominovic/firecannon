@@ -1,6 +1,6 @@
 import { useState } from "react";
 import reactLogo from "./assets/react.svg";
-import { greet } from "./bindings";
+import { fire, greet } from "./bindings";
 
 function App() {
   const [greeting, setGreeting] = useState("");
@@ -23,20 +23,19 @@ function App() {
       <p>Click on the Tauri, Vite, and React logos to learn more.</p>
 
       <h1>{greeting}</h1>
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet(
-            new FormData(e.target as HTMLFormElement).get("name") as string
-          ).then((greeting) => {
-            setGreeting(greeting);
-          });
+      <button
+        onClick={() => {
+          fire("http://localhost:3000", "GET", {}, 400)
+            .then((res) => {
+              console.log(res);
+            })
+            .catch((err) => {
+              console.error(err);
+            });
         }}
       >
-        <input id="greet-input" name="name" placeholder="Enter a name..." />
-        <button type="submit">Greet</button>
-      </form>
+        FIRE!
+      </button>
     </div>
   );
 }

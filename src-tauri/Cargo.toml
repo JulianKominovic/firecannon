@@ -17,9 +17,12 @@ tauri-build = { version = "1.5.0", features = [] }
 [dependencies]
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
-tauri = { version = "1.5.2", features = [] }
+tauri = { version = "1.5.2", features = ["devtools"] }
 specta = "1.0.5"
 tauri-specta = { version = "1.0.2", features = ["typescript"] }
+reqwest = { version = "0.11", features = ["blocking", "json"] }
+tokio = { version = "1", features = ["full"] }
+threadpool = "1.8.1"
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem and the built-in dev server is disabled.

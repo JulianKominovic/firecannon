@@ -6,3 +6,5 @@
 pub fn greet(name: String) -> String {
     format!("Hello {name}!")
 }
+
+pub mod fire;

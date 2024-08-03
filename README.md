@@ -1,16 +1,8 @@
-# Tauri + React + Typescript
+# Firecannon
 
-This template should help get you started developing with Tauri, React and Typescript in Vite.
+HTTP Load Testing Tool
 
-## Front
-- React
-- Typescript
-- Tailwind
+## References
 
-## Backend
-- Rust
-- Specta (autogen typescript code based in invoke handlers)
-
-## Recommended IDE Setup
-
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+- [Http requests in Rust](https://www.petergirnus.com/blog/how-to-make-http-requests-in-rust)
+- [Tokio](https://tokio.rs/tokio/tutorial/hello-tokio#async-main-function)
