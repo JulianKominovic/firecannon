@@ -1,6 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-
+import path from "path";
 // https://vitejs.dev/config/
 export default defineConfig(async () => ({
   plugins: [react()],
@@ -13,6 +13,11 @@ export default defineConfig(async () => ({
   server: {
     port: 1420,
     strictPort: true,
+  },
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
   },
   // 3. to make use of `TAURI_DEBUG` and other env variables
   // https://tauri.app/v1/api/config#buildconfig.beforedevcommand
