@@ -7,7 +7,11 @@ use std::{
 use reqwest::header::HeaderValue;
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use tokio::sync::Mutex;
+use tokio::{
+    runtime::Builder,
+    sync::{mpsc, Mutex},
+    task::JoinHandle,
+};
 
 use crate::utils::math::calculate_percentiles;
 
@@ -35,9 +39,11 @@ pub struct ResponseMetrics {
     pub duration_p_99: f64,
     pub total_redirects: u64,
     pub total_duration: u128,
+    pub requests_per_second: f64,
     pub total_requests: u64,
     pub total_bytes: u64,
     pub total_errors: u64,
+    pub timestamp: u128,
     pub responses: Vec<ResponseStats>,
 }
 
@@ -124,7 +130,7 @@ const UPDATE_TIME: u16 = 1000;
 
 #[tauri::command]
 #[specta::specta]
-pub fn fire(
+pub async fn fire(
     window: tauri::Window,
     url: String,
     method: String,
@@ -135,130 +141,79 @@ pub fn fire(
     if parallel_requests == 0 {
         return Err("Parallel requests cannot be 0".to_string());
     }
-    if parallel_requests > 1000 {
-        return Err("Parallel requests cannot be greater than 1000".to_string());
+    if parallel_requests > 5000 {
+        return Err(
+            "Easy cowboy 🔫 parallel requests cannot exceed 5000 or your PC will catch on 🔥"
+                .to_string(),
+        );
     }
     if duration_ms <= 0 {
         return Err("Duration must be greater than 0 ms".to_string());
     }
+    if duration_ms < UPDATE_TIME.into() {
+        return Err(format!("Duration must be greater than {} ms", UPDATE_TIME).to_string());
+    }
 
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let events_rt = Builder::new_multi_thread().enable_all().build().unwrap();
+    let mut handles: Vec<JoinHandle<()>> = vec![];
     let start_time = SystemTime::now();
-    let metrics_vec: Arc<Mutex<Vec<ResponseMetrics>>> = Arc::new(Mutex::new(vec![]));
-    let metrics_vec_cpy = metrics_vec.clone();
+    let metrics = Arc::new(Mutex::new(ResponseMetrics {
+        duration: vec![],
+        mean_duration: 0.0,
+        median_duration: 0.0,
+        min_duration: 0,
+        max_duration: 0,
+        total_duration: 0,
+        requests_per_second: 0.0,
+        total_requests: 0,
+        total_bytes: 0,
+        total_errors: 0,
+        total_redirects: 0,
+        duration_p_10: 0.0,
+        duration_p_25: 0.0,
+        duration_p_50: 0.0,
+        duration_p_75: 0.0,
+        duration_p_90: 0.0,
+        duration_p_95: 0.0,
+        duration_p_99: 0.0,
+        timestamp: start_time
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_millis(),
+        responses: vec![],
+    }));
+    let (send, mut recv) = mpsc::channel::<u8>(1);
+    let metrics_cpy = metrics.clone();
 
-    rt.spawn(async move {
+    let events_broadcaster = events_rt.spawn(async move {
         while SystemTime::now()
             .duration_since(start_time)
             .expect("Failed to get system_time duration from start_time")
             .as_millis()
             < duration_ms as u128
         {
-            let lock = metrics_vec_cpy.lock().await;
-            window.emit("metrics_update", lock.clone()).unwrap();
             tokio::time::sleep(Duration::from_millis(UPDATE_TIME as u64)).await;
-        }
-    });
 
-    while SystemTime::now()
-        .duration_since(start_time)
-        .expect("Failed to get system_time duration from start_time")
-        .as_millis()
-        < duration_ms as u128
-    {
-        let metrics = Arc::new(Mutex::new(ResponseMetrics {
-            duration: vec![],
-            mean_duration: 0.0,
-            median_duration: 0.0,
-            min_duration: 0,
-            max_duration: 0,
-            total_duration: 0,
-            total_requests: 0,
-            total_bytes: 0,
-            total_errors: 0,
-            total_redirects: 0,
-            duration_p_10: 0.0,
-            duration_p_25: 0.0,
-            duration_p_50: 0.0,
-            duration_p_75: 0.0,
-            duration_p_90: 0.0,
-            duration_p_95: 0.0,
-            duration_p_99: 0.0,
-            responses: vec![],
-        }));
-        let mut joins = vec![];
+            let lock = metrics_cpy.lock().await;
 
-        rt.block_on(async {
-            for _ in 0..parallel_requests {
-                let url = url.clone();
-                let method = method.clone();
-                let headers = headers.clone();
-                let binding = metrics.clone();
-                let process_request = async move {
-                    let mut metrics = binding.lock().await;
-                    let response = send_request(url, method, headers).await;
-                    match response {
-                        Ok(res) => {
-                            metrics.responses.push(res.clone());
-                            metrics.duration.push(res.duration);
-                            metrics.total_requests += 1;
-                            metrics.total_duration += res.duration;
-                            metrics.total_bytes += res.content_length;
-                            if res.status >= 400 {
-                                metrics.total_errors += 1;
-                            }
-                            if res.status >= 300 && res.status < 400 {
-                                metrics.total_redirects += 1;
-                            }
-                        }
-                        Err(e) => {
-                            metrics.total_errors += 1;
-                            println!("Error: {}", e);
-                        }
-                    }
-                };
-                joins.push(tokio::task::spawn(process_request));
-            }
-        });
-        for join in joins {
-            rt.block_on(join).unwrap();
-        }
-
-        let metrics = rt.block_on(async {
-            let clone = metrics.clone();
-            let metrics = clone.lock().await;
-            metrics.clone()
-        });
-        let mean_duration = metrics.total_duration as f64 / metrics.total_requests as f64;
-        let median_duration = {
-            let mut duration = metrics.duration.clone();
-            duration.sort();
-            let len = duration.len();
-            if len % 2 == 0 {
-                (duration[len / 2] + duration[len / 2 - 1]) as f64 / 2.0
-            } else {
-                duration[len / 2] as f64
-            }
-        };
-        let min_duration = *metrics.duration.iter().min().unwrap();
-        let max_duration = *metrics.duration.iter().max().unwrap();
-        let (
-            duration_p_10,
-            duration_p_25,
-            duration_p_50,
-            duration_p_75,
-            duration_p_90,
-            duration_p_95,
-            duration_p_99,
-        ) = calculate_percentiles(metrics.duration.clone());
-
-        rt.block_on(async {
-            let mut lock = metrics_vec.lock().await;
-            lock.push(ResponseMetrics {
-                mean_duration,
-                median_duration,
-                min_duration,
-                max_duration,
+            let mean_duration = lock.total_duration as f64 / lock.total_requests as f64;
+            let median_duration = {
+                let mut duration = lock.duration.clone();
+                duration.sort();
+                let len = duration.len();
+                if len == 0 {
+                    0.0
+                } else if len == 1 {
+                    duration[0] as f64
+                } else if len % 2 == 0 {
+                    (duration[len / 2] + duration[len / 2 - 1]) as f64 / 2.0
+                } else {
+                    duration[len / 2] as f64
+                }
+            };
+            let min_duration = *lock.duration.iter().min().unwrap_or(&(0 as u128));
+            let max_duration = *lock.duration.iter().max().unwrap_or(&(0 as u128));
+            let (
                 duration_p_10,
                 duration_p_25,
                 duration_p_50,
@@ -266,10 +221,88 @@ pub fn fire(
                 duration_p_90,
                 duration_p_95,
                 duration_p_99,
-                ..metrics
-            });
-        });
+            ) = calculate_percentiles(lock.duration.clone());
+            let requests_per_second = lock.total_requests as f64
+                / (SystemTime::now()
+                    .duration_since(start_time)
+                    .expect("Failed to get system_time duration from start_time")
+                    .as_secs_f64()
+                    + 0.0001);
+            let timestamp: u128 = SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_millis();
+
+            window
+                .emit(
+                    "metrics_update",
+                    ResponseMetrics {
+                        mean_duration,
+                        median_duration,
+                        min_duration,
+                        max_duration,
+                        duration_p_10,
+                        duration_p_25,
+                        duration_p_50,
+                        duration_p_75,
+                        duration_p_90,
+                        duration_p_95,
+                        duration_p_99,
+                        requests_per_second,
+                        timestamp,
+                        ..lock.clone()
+                    },
+                )
+                .unwrap();
+        }
+    });
+
+    let mut initial_connections = 0;
+    while SystemTime::now()
+        .duration_since(start_time)
+        .expect("Failed to get system_time duration from start_time")
+        .as_millis()
+        < duration_ms as u128
+        && (initial_connections < parallel_requests || recv.recv().await.is_some())
+    {
+        initial_connections += 1;
+        let sender_clone = send.clone();
+        let url = url.clone();
+        let method = method.clone();
+        let headers = headers.clone();
+        let binding = metrics.clone();
+        handles.push(tokio::task::spawn(async move {
+            let response = send_request(url, method, headers).await;
+            let mut metrics = binding.lock().await;
+            match response {
+                Ok(res) => {
+                    metrics.responses.push(res.clone());
+                    metrics.duration.push(res.duration);
+                    metrics.total_requests += 1;
+                    metrics.total_duration += res.duration;
+                    metrics.total_bytes += res.content_length;
+                    if res.status >= 400 {
+                        metrics.total_errors += 1;
+                    }
+                    if res.status >= 300 && res.status < 400 {
+                        metrics.total_redirects += 1;
+                    }
+                }
+                Err(e) => {
+                    metrics.total_errors += 1;
+                    println!("Error: {}", e);
+                }
+            }
+            sender_clone.send(1).await.expect("Failed to send message");
+        }))
     }
+
+    for handle in handles {
+        handle.await.expect("Failed to await handle");
+    }
+    events_broadcaster
+        .await
+        .expect("Failed to await events broadcaster");
 
     Ok(())
 }

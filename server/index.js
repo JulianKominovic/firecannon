@@ -15,12 +15,13 @@ app.use((req, res, next) => {
   const id = setTimeout(() => {
     next();
     clearTimeout(id);
-  }, Math.random() * 3_000);
+  }, Math.random() * 600);
+  next();
 });
 app.get("/", (req, res) => {
-  if (Math.random() > 0.5) {
-    return res.status(500).send("Internal Server Error");
-  }
+  // if (Math.random() > 0.5) {
+  //   return res.status(500).send("Internal Server Error");
+  // }
   res.send("Hello World!");
 });
 

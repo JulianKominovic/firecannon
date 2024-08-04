@@ -34,7 +34,7 @@ function App() {
       <h1>{greeting}</h1>
       <button
         onClick={() => {
-          fire("http://localhost:3000", "GET", {}, 10, 3500)
+          fire("http://localhost:3000", "GET", {}, 4000, 3000)
             .then((res) => {
               console.log(res);
             })
