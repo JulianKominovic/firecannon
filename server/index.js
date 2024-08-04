@@ -12,7 +12,10 @@ app.use((req, res, next) => {
     req.method,
     req.url
   );
-  next();
+  const id = setTimeout(() => {
+    next();
+    clearTimeout(id);
+  }, Math.random() * 3_000);
 });
 app.get("/", (req, res) => {
   if (Math.random() > 0.5) {

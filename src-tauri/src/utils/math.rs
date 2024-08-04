@@ -3,7 +3,7 @@
 pub fn calculate_percentiles(data: Vec<u128>) -> (f64, f64, f64, f64, f64, f64, f64) {
     let mut data = data;
     data.sort();
-    let len = data.len();
+    let len = data.len() - 1;
     (
         data[(len as f64 * 0.1).round() as usize] as f64,
         data[(len as f64 * 0.25).round() as usize] as f64,

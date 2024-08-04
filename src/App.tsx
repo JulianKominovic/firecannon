@@ -1,9 +1,18 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import reactLogo from "./assets/react.svg";
 import { fire, greet } from "./bindings";
+import { listen } from "@tauri-apps/api/event";
 
 function App() {
   const [greeting, setGreeting] = useState("");
+  useEffect(() => {
+    const unlisten = listen("metrics_update", (event) => {
+      console.log("event", event);
+    });
+    return () => {
+      unlisten.then((c) => c());
+    };
+  }, []);
   return (
     <div className="container">
       <h1>Welcome to Tauri!</h1>
@@ -25,7 +34,7 @@ function App() {
       <h1>{greeting}</h1>
       <button
         onClick={() => {
-          fire("http://localhost:3000", "GET", {}, 400)
+          fire("http://localhost:3000", "GET", {}, 10, 3500)
             .then((res) => {
               console.log(res);
             })
